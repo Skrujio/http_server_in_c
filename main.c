@@ -14,6 +14,33 @@
 #include <WS2tcpip.h>
 #endif
 
+int get_base_path(char* buffer, int buffer_size) {
+    #ifdef _WIN32
+    int bytes = GetModuleFileNameA(NULL, buffer, buffer_size);
+    #else
+    int bytes = readlink("/proc/self/exe", buffer, buffer_size);
+    #endif
+
+    for (int i = bytes-1; i >= 0; --i) {
+        if (buffer[i] == '/' ||
+            buffer[i] == '\\') {
+            buffer[i+1] = '\0';
+            bytes = i+1;
+            break;
+        }
+    }
+
+    #ifdef _WIN32
+    for (int i = 0; i < bytes; ++i) {
+        if (buffer[i] == '\\') {
+            buffer[i] = '/';
+        }
+    }
+    #endif
+
+    return bytes;
+}
+
 int close_socket(unsigned long long socket) {
     #ifdef _WIN32
     return closesocket(socket);
@@ -88,7 +115,7 @@ void send_file_chunked(unsigned long long socket, const char* content_type, int 
     return;
 }
 
-void handle_request(unsigned long long socket) {
+void handle_request(unsigned long long socket, const char* base_path, int base_path_size) {
     enum {buffer_size = 256};
     char request_buffer[buffer_size] = {0};
 
@@ -97,6 +124,10 @@ void handle_request(unsigned long long socket) {
         perror("Failed to recv data");
         return;
     }
+
+    enum {path_buffer_size = 256};
+    char path_buffer[path_buffer_size] = {0};
+    memcpy(path_buffer, base_path, base_path_size);
 
     const char get_request[] = "GET";
 
@@ -127,7 +158,9 @@ void handle_request(unsigned long long socket) {
     
     if (strncmp(request_buffer + sizeof(get_request), text_path, sizeof(text_path)-1) == 0) {
         const char content_type[] = "text/plain";
-        send_file_chunked(socket, content_type, sizeof(content_type)-1, "../text/readme.txt");
+        const char relative_path[] = "text/readme.txt";
+        strcat(path_buffer, relative_path);
+        send_file_chunked(socket, content_type, sizeof(content_type)-1, path_buffer);
         return;
     }
 
@@ -135,7 +168,9 @@ void handle_request(unsigned long long socket) {
     
     if (strncmp(request_buffer + sizeof(get_request), img_path, sizeof(img_path)-1) == 0) {
         const char content_type[] = "image/png";
-        send_file_chunked(socket, content_type, sizeof(content_type)-1, "../img/grassland_preview.png");
+        const char relative_path[] = "img/grassland_preview.png";
+        strcat(path_buffer, relative_path);
+        send_file_chunked(socket, content_type, sizeof(content_type)-1, path_buffer);
         return;
     }
 
@@ -143,7 +178,19 @@ void handle_request(unsigned long long socket) {
 
     if (strncmp(request_buffer + sizeof(get_request), book_path, sizeof(book_path)-1) == 0) {
         const char content_type[] = "application/pdf";
-        send_file_chunked(socket, content_type, sizeof(content_type)-1, "../book/Demidovich-Sb_Zad_po_Matanu.pdf");
+        const char relative_path[] = "book/Demidovich-Sb_Zad_po_Matanu.pdf";
+        strcat(path_buffer, relative_path);
+        send_file_chunked(socket, content_type, sizeof(content_type)-1, path_buffer);
+        return;
+    }
+
+    const char json_path[] = "/json";
+
+    if (strncmp(request_buffer + sizeof(get_request), json_path, sizeof(json_path)-1) == 0) {
+        const char content_type[] = "application/json";
+        const char relative_path[] = "json/New_document.json";
+        strcat(path_buffer, relative_path);
+        send_file_chunked(socket, content_type, sizeof(content_type)-1, path_buffer);
         return;
     }
 
@@ -151,18 +198,25 @@ void handle_request(unsigned long long socket) {
             "HTTP/1.1 404 OK\r\n"
             "Content-Type: text/html\r\n"
             "\r\n"
-            "<h1>Welcome to the other side... side of 404...</h1>";
+            "<h1>Welcome to the other side.. side of 404..</h1>";
     send(socket, response, sizeof(response), 0);
     return;
 }
 
-int main(void) {
+int main(void/*int argc, char** argv*/) {
+    enum {base_path_size = 256};
+    char base_path[base_path_size] = {0};
+    int base_path_length = get_base_path(base_path, base_path_size);
+    if (base_path_length <= 0) {
+        return EXIT_FAILURE;
+    }
+
     #ifdef _WIN32
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
     #endif
 
-    enum {port = 8080};
+    enum {port = 80};
 
     int opt = 1;
 
@@ -202,7 +256,7 @@ int main(void) {
             cleanup_server(server_fd);
         }
 
-        handle_request(client_socket);
+        handle_request(client_socket, base_path, base_path_length);
         close_socket(client_socket);
     }
 
