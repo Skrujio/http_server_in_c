@@ -34,17 +34,17 @@ void send_chunk(unsigned long long socket, const char* data, size_t data_size) {
     char chunk_header[16] = {0};
     int chunk_header_size = snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", data_size);
     if (send(socket, chunk_header, chunk_header_size, 0) == -1) {
-        perror("failed to send size of a chunk");
+        perror("Failed to send size of a chunk");
         return;
     }
     if (send(socket, data, (int)data_size, 0) == -1) {
-        perror("failed to send image bytes");
+        perror("Failed to send image bytes");
         return;
     }
 
     const char chunk_end[] = "\r\n";
     if (send(socket, chunk_end, sizeof(chunk_end)-1, 0) == -1) {
-        perror("failed to send chunk end");
+        perror("Failed to send chunk end");
         return;
     }
 }
@@ -52,7 +52,7 @@ void send_chunk(unsigned long long socket, const char* data, size_t data_size) {
 void send_file_chunked(unsigned long long socket, const char* content_type, int content_type_size, const char* file_path) {
     FILE* file_fd = fopen(file_path, "rb");
     if (!file_fd) {
-        perror("failed to open file file");
+        perror("Failed to open file file");
         return;
     }
 
@@ -67,7 +67,7 @@ void send_file_chunked(unsigned long long socket, const char* content_type, int 
     if (send(socket, response_header, sizeof(response_header)-1, 0) == -1 ||
         send(socket, content_type, content_type_size, 0) == -1 ||
         send(socket, response_header_tail, sizeof(response_header_tail)-1, 0) == -1) {
-        perror("failed to send response header");
+        perror("Failed to send response header");
     } else {
         enum {file_buffer_size = 1024};
         char file_buffer[file_buffer_size] = {0};
@@ -80,7 +80,7 @@ void send_file_chunked(unsigned long long socket, const char* content_type, int 
         const char last_chunk[] = "0\r\n\r\n";
         send_chunk(socket, last_chunk, sizeof(last_chunk) - 1);
         if (send(socket, last_chunk, sizeof(last_chunk)-1, 0) == -1) {
-            perror("failed to send file bytes");
+            perror("Failed to send file bytes");
         }
     }
 
@@ -151,7 +151,7 @@ void handle_request(unsigned long long socket) {
             "HTTP/1.1 404 OK\r\n"
             "Content-Type: text/html\r\n"
             "\r\n"
-            "<h1>Welcome to the other side... Side of 404...</h1>";
+            "<h1>Welcome to the other side... side of 404...</h1>";
     send(socket, response, sizeof(response), 0);
     return;
 }
@@ -162,7 +162,7 @@ int main(void) {
     WSAStartup(MAKEWORD(2, 2), &wsaData);
     #endif
 
-    const int PORT = 8080;
+    enum {port = 8080};
 
     int opt = 1;
 
@@ -182,7 +182,7 @@ int main(void) {
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons((unsigned short)PORT);
+    address.sin_port = htons((unsigned short)port);
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("Failed to bind a socket\n");
